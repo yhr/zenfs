@@ -68,6 +68,7 @@ class ZoneFile {
   uint32_t nr_synced_extents_ = 0;
   bool open_for_wr_ = false;
   time_t m_time_;
+  bool is_sparse_ = false;
  
   MetadataWriter* metadata_writer_ = NULL;
 

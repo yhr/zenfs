@@ -60,6 +60,7 @@ enum ZoneFileTag : uint32_t {
   kExtent = 5,
   kModificationTime = 6,
   kActiveExtentStart = 7,
+  kIsSparse = 8,
 };
 
 void ZoneFile::EncodeTo(std::string* output, uint32_t extent_start) {
@@ -94,6 +95,9 @@ void ZoneFile::EncodeTo(std::string* output, uint32_t extent_start) {
   PutFixed32(output, kActiveExtentStart);
   PutFixed64(output, extent_start_);
 
+  if (is_sparse_) {
+    PutFixed32(output, kIsSparse);
+  }
 }
 
 void ZoneFile::EncodeJson(std::ostream& json_stream) {
@@ -174,6 +178,9 @@ Status ZoneFile::DecodeFrom(Slice* input) {
           return Status::Corruption("ZoneFile", "Active extent start");
         extent_start_ = es;
         break;
+      case kIsSparse:
+        is_sparse_ = true;
+        break;
       default:
         return Status::Corruption("ZoneFile", "Unexpected tag");
     }
@@ -199,6 +206,8 @@ Status ZoneFile::MergeUpdate(ZoneFile* update) {
     zone->used_capacity_ += extent->length_;
     extents_.push_back(new ZoneExtent(extent->start_, extent->length_, zone));
   }
+
+  /* We don't merge the sparse flag, as that must be set once, from the start */
 
   MetadataSynced();
 
