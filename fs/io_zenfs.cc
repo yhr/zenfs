@@ -400,8 +400,8 @@ IOStatus ZoneFile::AllocateNewZone() {
     return PersistMetadata();
 }
 
-/* Assumes that data and size are block aligned */
-IOStatus ZoneFile::Append(void* data, int data_size, int valid_size) {
+/* Byte-aligned, sparse writes with inline metadata*/
+IOStatus ZoneFile::SparseAppend(void* data, int data_size, int valid_size) {
   uint32_t left = data_size;
   uint32_t wr_size, offset = 0;
   IOStatus s;
@@ -434,6 +434,42 @@ IOStatus ZoneFile::Append(void* data, int data_size, int valid_size) {
   }
 
   fileSize -= (data_size - valid_size);
+  return IOStatus::OK();
+}
+
+/* Assumes that data and size are block aligned */
+IOStatus ZoneFile::Append(void* data, int data_size) {
+  uint32_t left = data_size;
+  uint32_t wr_size, offset = 0;
+  IOStatus s;
+
+  if (active_zone_ == NULL) {
+    s = AllocateNewZone();
+    if (!s.ok())
+      return s;
+  }
+
+  while (left) {
+    if (active_zone_->capacity_ == 0) {
+      PushExtent();
+      active_zone_->CloseWR();
+
+      s = AllocateNewZone();
+      if (!s.ok())
+        return s;
+    }
+
+    wr_size = left;
+    if (wr_size > active_zone_->capacity_) wr_size = active_zone_->capacity_;
+
+    s = active_zone_->Append((char*)data + offset, wr_size);
+    if (!s.ok()) return s;
+
+    fileSize += wr_size;
+    left -= wr_size;
+    offset += wr_size;
+  }
+
   return IOStatus::OK();
 }
 
@@ -533,7 +569,7 @@ IOStatus ZonedWritableFile::FlushBuffer() {
   if (pad_sz) memset((char*)buffer + buffer_pos, 0x0, pad_sz);
 
   wr_sz = buffer_pos + pad_sz;
-  s = zoneFile_->Append((char*)buffer, wr_sz, buffer_pos);
+  s = zoneFile_->SparseAppend((char*)buffer, wr_sz, buffer_pos);
   if (!s.ok()) {
     return s;
   }
@@ -585,7 +621,7 @@ IOStatus ZonedWritableFile::BufferedWrite(const Slice& slice) {
     }
 
     memcpy(alignbuf, data, aligned_sz);
-    s = zoneFile_->Append(alignbuf, aligned_sz, aligned_sz);
+    s = zoneFile_->SparseAppend(alignbuf, aligned_sz, aligned_sz);
     free(alignbuf);
 
     if (!s.ok()) return s;
@@ -613,7 +649,7 @@ IOStatus ZonedWritableFile::Append(const Slice& data,
     s = BufferedWrite(data);
     buffer_mtx_.unlock();
   } else {
-    s = zoneFile_->Append((void*)data.data(), data.size(), data.size());
+    s = zoneFile_->Append((void*)data.data(), data.size());
     if (s.ok()) wp += data.size();
   }
 
@@ -635,7 +671,7 @@ IOStatus ZonedWritableFile::PositionedAppend(const Slice& data, uint64_t offset,
     s = BufferedWrite(data);
     buffer_mtx_.unlock();
   } else {
-    s = zoneFile_->Append((void*)data.data(), data.size(), data.size());
+    s = zoneFile_->Append((void*)data.data(), data.size());
     if (s.ok()) wp += data.size();
   }
 
