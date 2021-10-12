@@ -581,59 +581,29 @@ IOStatus ZonedWritableFile::FlushBuffer() {
 }
 
 IOStatus ZonedWritableFile::BufferedWrite(const Slice& slice) {
-  uint32_t buffer_left = buffer_sz - buffer_pos;
   uint32_t data_left = slice.size();
   char* data = (char*)slice.data();
-  uint32_t tobuffer;
-  int blocks, aligned_sz;
-  int ret;
-  void* alignbuf;
   IOStatus s;
 
-  if (buffer_pos || data_left <= buffer_left) {
-    if (data_left < buffer_left) {
-      tobuffer = data_left;
-    } else {
-      tobuffer = buffer_left;
+  while (data_left) {
+    uint32_t buffer_left = buffer_sz - buffer_pos;
+    uint32_t to_buffer;
+
+    if (!buffer_left) {
+      s = FlushBuffer();
+      if (!s.ok()) return s;
+      buffer_left = buffer_sz;
     }
 
-    memcpy(buffer + buffer_pos, data, tobuffer);
-    buffer_pos += tobuffer;
-    data_left -= tobuffer;
-
-    if (!data_left) return IOStatus::OK();
-
-    data += tobuffer;
-  }
-
-  if (buffer_pos == buffer_sz) {
-    s = FlushBuffer();
-    if (!s.ok()) return s;
-  }
-
-  if (data_left >= buffer_sz) {
-    blocks = data_left / block_sz;
-    aligned_sz = block_sz * blocks;
-
-    ret = posix_memalign(&alignbuf, sysconf(_SC_PAGESIZE), aligned_sz);
-    if (ret) {
-      return IOStatus::IOError("failed allocating alignment write buffer\n");
+    to_buffer = data_left;
+    if (to_buffer > buffer_left) {
+      to_buffer = buffer_left;
     }
 
-    memcpy(alignbuf, data, aligned_sz);
-    s = zoneFile_->SparseAppend(alignbuf, aligned_sz, aligned_sz);
-    free(alignbuf);
-
-    if (!s.ok()) return s;
-
-    wp += aligned_sz;
-    data_left -= aligned_sz;
-    data += aligned_sz;
-  }
-
-  if (data_left) {
-    memcpy(buffer, data, data_left);
-    buffer_pos = data_left;
+    memcpy(buffer + buffer_pos, data, to_buffer);
+    buffer_pos += to_buffer;
+    data_left -= to_buffer;
+    data += to_buffer;
   }
 
   return IOStatus::OK();
