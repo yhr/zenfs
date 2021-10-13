@@ -400,12 +400,15 @@ IOStatus ZoneFile::AllocateNewZone() {
     return PersistMetadata();
 }
 
-/* Byte-aligned, sparse writes with inline metadata*/
-IOStatus ZoneFile::SparseAppend(void* data, int data_size) {
-  uint32_t left = data_size;
+/* Byte-aligned, sparse writes with inline metadata 
+   the caller reserves 8 bytes of data for a size header */
+IOStatus ZoneFile::SparseAppend(char* data, uint32_t size) {
+  uint32_t left = size;
   uint32_t wr_size, offset = 0;
   uint32_t block_sz = GetBlockSize();
   IOStatus s;
+
+  // TODO: insert start addr here
 
   if (active_zone_ == NULL) {
     s = AllocateNewZone();
@@ -414,15 +417,6 @@ IOStatus ZoneFile::SparseAppend(void* data, int data_size) {
   }
 
   while (left) {
-    if (active_zone_->capacity_ == 0) {
-      PushExtent();
-      active_zone_->CloseWR();
-
-      s = AllocateNewZone();
-      if (!s.ok())
-        return s;
-    }
-
     wr_size = left;
     if (wr_size > active_zone_->capacity_) wr_size = active_zone_->capacity_;
 
@@ -434,12 +428,30 @@ IOStatus ZoneFile::SparseAppend(void* data, int data_size) {
     if (align) pad_sz = block_sz - align;
     if (pad_sz) memset((char*)data + offset + wr_size, 0x0, pad_sz);
 
-    s = active_zone_->Append((char*)data + offset, wr_size + pad_sz);
+    s = active_zone_->Append(data + offset, wr_size + pad_sz);
     if (!s.ok()) return s;
 
-    fileSize += wr_size;
+    uint32_t extent_length = wr_size - ZoneFile::SPARSE_HEADER_SIZE;
+
+    extents_.push_back(new ZoneExtent(extent_start_ + ZoneFile::SPARSE_HEADER_SIZE,
+                                      extent_length, active_zone_));
+
+    extent_start_ = active_zone_->wp_;
+    active_zone_->used_capacity_ += extent_length;
+    fileSize += extent_length;
     left -= wr_size;
-    offset += wr_size;
+
+    if (active_zone_->capacity_ == 0) {
+      // TODO: insert start addr here
+      if (left) {
+        memcpy((void *)(data + ZoneFile::SPARSE_HEADER_SIZE), (void *)(data + wr_size), left);
+        offset = ZoneFile::SPARSE_HEADER_SIZE;
+      }
+      active_zone_->CloseWR();
+      s = AllocateNewZone();
+      if (!s.ok())
+        return s;
+    }
   }
 
   return IOStatus::OK();
@@ -528,13 +540,20 @@ IOStatus ZonedWritableFile::Fsync(const IOOptions& /*options*/,
                                   IODebugContext* /*dbg*/) {
   IOStatus s;
 
-  buffer_mtx_.lock();
-  s = FlushBuffer();
-  buffer_mtx_.unlock();
-  if (!s.ok()) {
-    return s;
+  if (buffered) {
+    buffer_mtx_.lock();
+    /* Flushing the buffer will result in a new extent added to the list*/
+    s = FlushBuffer();
+    buffer_mtx_.unlock();
+    if (!s.ok()) {
+      return s;
+    }
+  } else {
+    /* For direct writes, there is no buffer to flush, we just need to persist
+       the current extent */
+    zoneFile_->PushExtent();
   }
-  zoneFile_->PushExtent();
+
   return zoneFile_->PersistMetadata();
 
 }
@@ -568,14 +587,14 @@ IOStatus ZonedWritableFile::Close(const IOOptions& options,
 IOStatus ZonedWritableFile::FlushBuffer() {
   IOStatus s;
 
-  if (!buffer_pos) return IOStatus::OK();
+  if (buffer_pos == ZoneFile::SPARSE_HEADER_SIZE) return IOStatus::OK();
 
   s = zoneFile_->SparseAppend((char*)buffer, buffer_pos);
   if (!s.ok()) {
     return s;
   }
 
-  wp += buffer_pos;
+  wp += buffer_pos - ZoneFile::SPARSE_HEADER_SIZE;
   buffer_pos = ZoneFile::SPARSE_HEADER_SIZE;
 
   return IOStatus::OK();

@@ -86,7 +86,7 @@ class ZoneFile {
   IOStatus PersistMetadata();
 
   IOStatus Append(void* buffer, int data_size);
-  IOStatus SparseAppend(void* data, int data_size);
+  IOStatus SparseAppend(char* data, uint32_t size);
   IOStatus SetWriteLifeTimeHint(Env::WriteLifeTimeHint lifetime);
   std::string GetFilename();
   void Rename(std::string name);
