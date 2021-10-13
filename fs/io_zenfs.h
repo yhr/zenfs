@@ -73,6 +73,7 @@ class ZoneFile {
   MetadataWriter* metadata_writer_ = NULL;
 
  public:
+  static const int SPARSE_HEADER_SIZE = 8;
 
   explicit ZoneFile(ZonedBlockDevice* zbd, std::string filename,
                     uint64_t file_id_);

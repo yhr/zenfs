@@ -494,12 +494,12 @@ ZonedWritableFile::ZonedWritableFile(ZonedBlockDevice* zbd, bool _buffered,
 
   buffered = _buffered;
   block_sz = zbd->GetBlockSize();
-  buffer_sz = block_sz * 256;
-  buffer_pos = 0;
-
   zoneFile_ = zoneFile;
 
   if (buffered) {
+    buffer_sz = block_sz * 256;
+    buffer_pos = ZoneFile::SPARSE_HEADER_SIZE;
+
     int ret = posix_memalign((void**)&buffer, sysconf(_SC_PAGESIZE), buffer_sz);
 
     if (ret) buffer = nullptr;
@@ -576,7 +576,7 @@ IOStatus ZonedWritableFile::FlushBuffer() {
   }
 
   wp += buffer_pos;
-  buffer_pos = 0;
+  buffer_pos = ZoneFile::SPARSE_HEADER_SIZE;
 
   return IOStatus::OK();
 }
