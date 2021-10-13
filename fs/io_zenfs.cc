@@ -401,9 +401,10 @@ IOStatus ZoneFile::AllocateNewZone() {
 }
 
 /* Byte-aligned, sparse writes with inline metadata*/
-IOStatus ZoneFile::SparseAppend(void* data, int data_size, int valid_size) {
+IOStatus ZoneFile::SparseAppend(void* data, int data_size) {
   uint32_t left = data_size;
   uint32_t wr_size, offset = 0;
+  uint32_t block_sz = GetBlockSize();
   IOStatus s;
 
   if (active_zone_ == NULL) {
@@ -425,7 +426,15 @@ IOStatus ZoneFile::SparseAppend(void* data, int data_size, int valid_size) {
     wr_size = left;
     if (wr_size > active_zone_->capacity_) wr_size = active_zone_->capacity_;
 
-    s = active_zone_->Append((char*)data + offset, wr_size);
+    /* Pad to the next block boundary if needed */
+    uint32_t align = wr_size % block_sz;
+    uint32_t pad_sz = 0;
+
+    align = wr_size % block_sz;
+    if (align) pad_sz = block_sz - align;
+    if (pad_sz) memset((char*)data + offset + wr_size, 0x0, pad_sz);
+
+    s = active_zone_->Append((char*)data + offset, wr_size + pad_sz);
     if (!s.ok()) return s;
 
     fileSize += wr_size;
@@ -433,7 +442,6 @@ IOStatus ZoneFile::SparseAppend(void* data, int data_size, int valid_size) {
     offset += wr_size;
   }
 
-  fileSize -= (data_size - valid_size);
   return IOStatus::OK();
 }
 
@@ -558,18 +566,11 @@ IOStatus ZonedWritableFile::Close(const IOOptions& options,
 }
 
 IOStatus ZonedWritableFile::FlushBuffer() {
-  uint32_t align, pad_sz = 0, wr_sz;
   IOStatus s;
 
   if (!buffer_pos) return IOStatus::OK();
 
-  align = buffer_pos % block_sz;
-  if (align) pad_sz = block_sz - align;
-
-  if (pad_sz) memset((char*)buffer + buffer_pos, 0x0, pad_sz);
-
-  wr_sz = buffer_pos + pad_sz;
-  s = zoneFile_->SparseAppend((char*)buffer, wr_sz, buffer_pos);
+  s = zoneFile_->SparseAppend((char*)buffer, buffer_pos);
   if (!s.ok()) {
     return s;
   }
