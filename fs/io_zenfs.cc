@@ -356,7 +356,6 @@ IOStatus ZoneFile::PositionedRead(uint64_t offset, size_t n, Slice* result,
       }
       r_off = extent->start_;
       extent_end = extent->start_ + extent->length_;
-      assert(((size_t)r_off % zbd_->GetBlockSize()) == 0);
     }
   }
 
