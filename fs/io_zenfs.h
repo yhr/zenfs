@@ -69,7 +69,7 @@ class ZoneFile {
   bool open_for_wr_ = false;
   time_t m_time_;
   bool is_sparse_ = false;
- 
+
   MetadataWriter* metadata_writer_ = NULL;
 
  public:
@@ -118,6 +118,9 @@ class ZoneFile {
 
   uint64_t GetID() { return file_id_; }
   size_t GetUniqueId(char* id, size_t max_size);
+
+  bool IsSparse() { return is_sparse_; };
+  void SetSparse(bool is_sparse) { is_sparse_ = is_sparse; };
 };
 
 class ZonedWritableFile : public FSWritableFile {

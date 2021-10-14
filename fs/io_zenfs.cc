@@ -207,8 +207,7 @@ Status ZoneFile::MergeUpdate(ZoneFile* update) {
     extents_.push_back(new ZoneExtent(extent->start_, extent->length_, zone));
   }
 
-  /* We don't merge the sparse flag, as that must be set once, from the start */
-
+  is_sparse_ = update->IsSparse();
   MetadataSynced();
 
   return Status::OK();
@@ -522,6 +521,7 @@ ZonedWritableFile::ZonedWritableFile(ZonedBlockDevice* zbd, bool _buffered,
     buffer_sz = sparse_buffer_sz - ZoneFile::SPARSE_HEADER_SIZE - block_sz;
     buffer = sparse_buffer + ZoneFile::SPARSE_HEADER_SIZE;
 
+    zoneFile_->SetSparse(true);
   }
 
   zoneFile_->OpenWR(metadata_writer);
