@@ -402,8 +402,8 @@ IOStatus ZoneFile::AllocateNewZone() {
 /* Byte-aligned, sparse writes with inline metadata
    the caller reserves 8 bytes of data for a size header */
 IOStatus ZoneFile::SparseAppend(char* sparse_buffer, uint32_t data_size) {
-  uint32_t left = data_size + ZoneFile::SPARSE_HEADER_SIZE;
-  uint32_t wr_size, offset = 0;
+  uint32_t left = data_size;
+  uint32_t wr_size;
   uint32_t block_sz = GetBlockSize();
   IOStatus s;
 
@@ -416,7 +416,7 @@ IOStatus ZoneFile::SparseAppend(char* sparse_buffer, uint32_t data_size) {
   }
 
   while (left) {
-    wr_size = left;
+    wr_size = left + ZoneFile::SPARSE_HEADER_SIZE;
     if (wr_size > active_zone_->capacity_) wr_size = active_zone_->capacity_;
 
     /* Pad to the next block boundary if needed */
@@ -425,26 +425,24 @@ IOStatus ZoneFile::SparseAppend(char* sparse_buffer, uint32_t data_size) {
 
     align = wr_size % block_sz;
     if (align) pad_sz = block_sz - align;
-    if (pad_sz) memset(sparse_buffer + offset + wr_size, 0x0, pad_sz);
+    if (pad_sz) memset(sparse_buffer + wr_size, 0x0, pad_sz);
 
-    s = active_zone_->Append(sparse_buffer + offset, wr_size + pad_sz);
+    s = active_zone_->Append(sparse_buffer, wr_size + pad_sz);
     if (!s.ok()) return s;
 
     uint32_t extent_length = wr_size - ZoneFile::SPARSE_HEADER_SIZE;
-
     extents_.push_back(new ZoneExtent(extent_start_ + ZoneFile::SPARSE_HEADER_SIZE,
                                       extent_length, active_zone_));
 
     extent_start_ = active_zone_->wp_;
     active_zone_->used_capacity_ += extent_length;
     fileSize += extent_length;
-    left -= wr_size;
+    left -= extent_length;
 
     if (active_zone_->capacity_ == 0) {
       // TODO: insert start addr here
       if (left) {
         memcpy((void *)(sparse_buffer + ZoneFile::SPARSE_HEADER_SIZE), (void *)(sparse_buffer + wr_size), left);
-        offset = ZoneFile::SPARSE_HEADER_SIZE;
       }
       active_zone_->CloseWR();
       s = AllocateNewZone();
