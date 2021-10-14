@@ -506,16 +506,23 @@ ZonedWritableFile::ZonedWritableFile(ZonedBlockDevice* zbd, bool _buffered,
   buffered = _buffered;
   block_sz = zbd->GetBlockSize();
   zoneFile_ = zoneFile;
+  buffer_pos = 0;
+  sparse_buffer = nullptr;
+  buffer = nullptr;
 
   if (buffered) {
-    buffer_sz = block_sz * 256;
-    buffer_pos = ZoneFile::SPARSE_HEADER_SIZE;
+    size_t sparse_buffer_sz;
 
-    int ret = posix_memalign((void**)&buffer, sysconf(_SC_PAGESIZE), buffer_sz);
+    sparse_buffer_sz = 1024 * 1024 + block_sz; /* one extra block size for padding */
+    int ret = posix_memalign((void**)&sparse_buffer, sysconf(_SC_PAGESIZE), sparse_buffer_sz);
 
-    if (ret) buffer = nullptr;
+    if (ret) sparse_buffer = nullptr;
 
-    assert(buffer != nullptr);
+    assert(sparse_buffer != nullptr);
+
+    buffer_sz = sparse_buffer_sz - ZoneFile::SPARSE_HEADER_SIZE - block_sz;
+    buffer = sparse_buffer + ZoneFile::SPARSE_HEADER_SIZE;
+
   }
 
   zoneFile_->OpenWR(metadata_writer);
@@ -523,7 +530,7 @@ ZonedWritableFile::ZonedWritableFile(ZonedBlockDevice* zbd, bool _buffered,
 
 ZonedWritableFile::~ZonedWritableFile() {
   zoneFile_->CloseWR();
-  if (buffered) free(buffer);
+  if (buffered) free(sparse_buffer);
 };
 
 MetadataWriter::~MetadataWriter() {}
@@ -586,15 +593,16 @@ IOStatus ZonedWritableFile::Close(const IOOptions& options,
 IOStatus ZonedWritableFile::FlushBuffer() {
   IOStatus s;
 
-  if (buffer_pos == ZoneFile::SPARSE_HEADER_SIZE) return IOStatus::OK();
+  if (buffer_pos == 0) return IOStatus::OK();
 
-  s = zoneFile_->SparseAppend((char*)buffer, buffer_pos);
+  s = zoneFile_->SparseAppend(sparse_buffer,
+                              buffer_pos + ZoneFile::SPARSE_HEADER_SIZE);
   if (!s.ok()) {
     return s;
   }
 
-  wp += buffer_pos - ZoneFile::SPARSE_HEADER_SIZE;
-  buffer_pos = ZoneFile::SPARSE_HEADER_SIZE;
+  wp += buffer_pos;
+  buffer_pos = 0;
 
   return IOStatus::OK();
 }

@@ -171,6 +171,7 @@ class ZonedWritableFile : public FSWritableFile {
   IOStatus FlushBuffer();
 
   bool buffered;
+  char* sparse_buffer;
   char* buffer;
   size_t buffer_sz;
   uint32_t block_sz;
