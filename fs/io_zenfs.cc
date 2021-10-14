@@ -427,10 +427,12 @@ IOStatus ZoneFile::SparseAppend(char* sparse_buffer, uint32_t data_size) {
     if (align) pad_sz = block_sz - align;
     if (pad_sz) memset(sparse_buffer + wr_size, 0x0, pad_sz);
 
+    uint64_t extent_length = wr_size - ZoneFile::SPARSE_HEADER_SIZE;
+    EncodeFixed64(sparse_buffer, extent_length);
+
     s = active_zone_->Append(sparse_buffer, wr_size + pad_sz);
     if (!s.ok()) return s;
 
-    uint32_t extent_length = wr_size - ZoneFile::SPARSE_HEADER_SIZE;
     extents_.push_back(new ZoneExtent(extent_start_ + ZoneFile::SPARSE_HEADER_SIZE,
                                       extent_length, active_zone_));
 
@@ -440,7 +442,6 @@ IOStatus ZoneFile::SparseAppend(char* sparse_buffer, uint32_t data_size) {
     left -= extent_length;
 
     if (active_zone_->capacity_ == 0) {
-      // TODO: insert start addr here
       if (left) {
         memcpy((void *)(sparse_buffer + ZoneFile::SPARSE_HEADER_SIZE), (void *)(sparse_buffer + wr_size), left);
       }
