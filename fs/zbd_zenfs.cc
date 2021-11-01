@@ -668,10 +668,8 @@ IOStatus ZonedBlockDevice::AllocateEmptyZone(Zone **zone_out) {
   return IOStatus::OK();
 }
 
-
-
 IOStatus ZonedBlockDevice::AllocateIOZone(Env::WriteLifeTimeHint file_lifetime,
-                                        Zone **out_zone) {
+                                          IOType io_type, Zone **out_zone) {
   Zone *allocated_zone = nullptr;
   unsigned int best_diff = LIFETIME_DIFF_NOT_GOOD;
   int new_zone = 0;
@@ -690,10 +688,11 @@ IOStatus ZonedBlockDevice::AllocateIOZone(Env::WriteLifeTimeHint file_lifetime,
     return s;
   }
 
-  /* TODO: this should not be done for wal files */
-  s = ApplyFinishThreshold();
-  if (!s.ok()) {
-      return s;
+  if (io_type != IOType::kWAL) {
+    s = ApplyFinishThreshold();
+    if (!s.ok()) {
+        return s;
+    }
   }
 
   WaitForOpenIOZoneToken();
@@ -709,7 +708,6 @@ IOStatus ZonedBlockDevice::AllocateIOZone(Env::WriteLifeTimeHint file_lifetime,
 
   /* If we did not find a good match, allocate an empty one */
   if (best_diff >= LIFETIME_DIFF_NOT_GOOD) {
-
     /* If we at the active io zone limit, finish an open zone(if available) with
      * least capacity left */
     if (allocated_zone != nullptr) {
