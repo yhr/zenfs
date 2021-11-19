@@ -379,11 +379,16 @@ IOStatus ZoneFile::Append(void* data, int data_size, int valid_size) {
     if (active_zone_->capacity_ == 0) {
       PushExtent();
 
-      IOStatus status = active_zone_->Close();
+      bool full = active_zone_->IsFull();
+      s = active_zone_->Close();
       ReleaseActiveZone();
-      if (status.ok()) {
+      if (s.ok()) {
         zbd_->PutOpenIOZoneToken();
-        zbd_->PutActiveIOZoneToken();
+        if (full) {
+          zbd_->PutActiveIOZoneToken();
+        }
+      } else {
+        return s;
       }
 
       Zone* zone = zbd_->AllocateIOZone(lifetime_, io_type_);
