@@ -7,7 +7,7 @@
 #include <fcntl.h>
 #include <gflags/gflags.h>
 #include <rocksdb/file_system.h>
-#include <rocksdb/plugin/zenfs/fs/fs_zenfs.h>
+#include <third-party/zenfs/fs/fs_zenfs.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
