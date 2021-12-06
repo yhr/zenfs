@@ -512,6 +512,11 @@ IOStatus ZenFS::NewRandomAccessFile(const std::string& fname,
   return IOStatus::OK();
 }
 
+inline bool ends_with(std::string const& value, std::string const& ending) {
+  if (ending.size() > value.size()) return false;
+  return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
+}
+
 IOStatus ZenFS::NewWritableFile(const std::string& fname,
                                 const FileOptions& file_opts,
                                 std::unique_ptr<FSWritableFile>* result,
@@ -529,7 +534,14 @@ IOStatus ZenFS::NewWritableFile(const std::string& fname,
   std::shared_ptr<ZoneFile> zoneFile(
       new ZoneFile(zbd_, fname, next_file_id_++));
   zoneFile->SetFileModificationTime(time(0));
-  zoneFile->SetIOType(file_opts.io_options.type);
+
+  /* RocksDB does not set the right io type(!)*/
+  if (ends_with(fname, ".log")) {
+    zoneFile->SetIOType(IOType::kWAL);
+  } else {
+    zoneFile->SetIOType(IOType::kUnknown);
+  }
+
   zoneFile->SetSparse(!file_opts.use_direct_writes);
 
   /* Persist the creation of the file */
