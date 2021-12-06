@@ -713,7 +713,7 @@ IOStatus ZonedBlockDevice::AllocateIOZone(Env::WriteLifeTimeHint file_lifetime,
 
   // Holding allocated_zone if != nullptr
 
-  if (best_diff >= LIFETIME_DIFF_COULD_BE_WORSE) {
+  if (best_diff >= LIFETIME_DIFF_COULD_BE_WORSE && !(io_type == IOType::kWAL && allocated_zone != nullptr)) {
     if (io_type == IOType::kWAL && allocated_zone != nullptr) {
         fprintf(stdout, "\n Did not find a good zone for WAL allocation. Best diff: %d\n",
                 (int)best_diff);
