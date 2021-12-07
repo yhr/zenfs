@@ -685,6 +685,7 @@ IOStatus ZonedBlockDevice::AllocateIOZone(Env::WriteLifeTimeHint file_lifetime,
   unsigned int best_diff = LIFETIME_DIFF_NOT_GOOD;
   int new_zone = 0;
   IOStatus s;
+  bool is_wal = (io_type == IOType::kWAL);
   ZenFSMetricsLatencyGuard guard(metrics_, ZENFS_IO_ALLOC_NON_WAL_LATENCY,
                                  Env::Default());
   metrics_->ReportQPS(ZENFS_IO_ALLOC_QPS, 1);
@@ -695,14 +696,17 @@ IOStatus ZonedBlockDevice::AllocateIOZone(Env::WriteLifeTimeHint file_lifetime,
     return s;
   }
 
-  if (io_type != IOType::kWAL) {
+  if (!is_wal) {
     s = ApplyFinishThreshold();
     if (!s.ok()) {
         return s;
     }
   }
 
-  WaitForOpenIOZoneToken(io_type == IOType::kWAL);
+  fprintf(stdout, "\n Allocating a new zone -- Active zones: %d open zones: %d is WAL: %d\n",
+              (int)open_io_zones_.load(), (int)open_io_zones_.load(), (int)is_wal);
+
+  WaitForOpenIOZoneToken(is_wal);
 
   /* Try to fill an already open zone(with the best life time diff) */
   s = GetBestOpenZoneMatch(file_lifetime, &best_diff, &allocated_zone);
@@ -713,11 +717,7 @@ IOStatus ZonedBlockDevice::AllocateIOZone(Env::WriteLifeTimeHint file_lifetime,
 
   // Holding allocated_zone if != nullptr
 
-  if (best_diff >= LIFETIME_DIFF_COULD_BE_WORSE && !(io_type == IOType::kWAL && allocated_zone != nullptr)) {
-    if (io_type == IOType::kWAL && allocated_zone != nullptr) {
-        fprintf(stdout, "\n Did not find a good zone for WAL allocation. Best diff: %d\n",
-                (int)best_diff);
-    }
+  if (best_diff >= LIFETIME_DIFF_COULD_BE_WORSE && !(is_wal && allocated_zone != nullptr)) {
 
     bool got_token = GetActiveIOZoneTokenIfAvailable();
 
@@ -764,12 +764,16 @@ IOStatus ZonedBlockDevice::AllocateIOZone(Env::WriteLifeTimeHint file_lifetime,
   }
 
   if (allocated_zone) {
+      fprintf(stdout,"     -> Allocate OK  Active zones: %d open zones: %d is WAL: %d\n",
+              (int)open_io_zones_.load(), (int)open_io_zones_.load(), (int)is_wal);
     assert(allocated_zone->IsBusy());
     Debug(logger_,
           "Allocating zone(new=%d) start: 0x%lx wp: 0x%lx lt: %d file lt: %d\n",
           new_zone, allocated_zone->start_, allocated_zone->wp_,
           allocated_zone->lifetime_, file_lifetime);
   } else {
+      fprintf(stdout, "    -> Allocate NOT OK  Active zones: %d open zones: %d is WAL: %d\n",
+              (int)open_io_zones_.load(), (int)open_io_zones_.load(), (int)is_wal);
     PutOpenIOZoneToken();
   }
 
