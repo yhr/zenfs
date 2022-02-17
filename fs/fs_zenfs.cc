@@ -679,11 +679,23 @@ IOStatus ZenFS::OpenWritableFile(const std::string& fname,
   zoneFile->SetFileModificationTime(time(0));
 
   /* RocksDB does not set the right io type(!)*/
-  if (ends_with(fname, ".log")) {
-    zoneFile->SetIOType(IOType::kWAL);
-    zoneFile->SetSparse(!file_opts.use_direct_writes);
+  if (file_opts.io_options.type == IOType::kUnknown) {
+    if (fname.find("MANIFEST") != std::string::npos) {
+      zoneFile->SetIOType(IOType::kManifest);
+    } else if (ends_with(fname, ".log")) {
+      zoneFile->SetIOType(IOType::kWAL);
+    } else {
+      zoneFile->SetIOType(IOType::kUnknown);
+    }
   } else {
-    zoneFile->SetIOType(IOType::kUnknown);
+    zoneFile->SetIOType(file_opts.io_options.type);
+  }
+
+  /* Enable sparse writes for WAL and manifest files as this
+     reduces metadata churn and reduces write tail latency */
+  if ((zoneFile->GetIOType() == IOType::kWAL) ||
+      (zoneFile->GetIOType() == IOType::kManifest)) {
+    zoneFile->SetSparse(!file_opts.use_direct_writes);
   }
 
   /* Persist the creation of the file */

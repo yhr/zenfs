@@ -783,6 +783,7 @@ IOStatus ZonedBlockDevice::AllocateIOZone(Env::WriteLifeTimeHint file_lifetime,
   Zone *allocated_zone = nullptr;
   unsigned int best_diff = LIFETIME_DIFF_NOT_GOOD;
   int new_zone = 0;
+  bool prio_io = (io_type == IOType::kWAL || io_type == IOType::kManifest);
   IOStatus s;
   ZenFSMetricsLatencyGuard guard(metrics_,
                                  io_type == IOType::kWAL
@@ -797,14 +798,14 @@ IOStatus ZonedBlockDevice::AllocateIOZone(Env::WriteLifeTimeHint file_lifetime,
     return s;
   }
 
-  if (io_type != IOType::kWAL) {
+  if (!prio_io) {
     s = ApplyFinishThreshold();
     if (!s.ok()) {
       return s;
     }
   }
 
-  WaitForOpenIOZoneToken(io_type == IOType::kWAL);
+  WaitForOpenIOZoneToken(prio_io);
 
   /* Try to fill an already open zone(with the best life time diff) */
   s = GetBestOpenZoneMatch(file_lifetime, &best_diff, &allocated_zone);
@@ -876,7 +877,7 @@ IOStatus ZonedBlockDevice::AllocateIOZone(Env::WriteLifeTimeHint file_lifetime,
     PutOpenIOZoneToken();
   }
 
-  if (io_type != IOType::kWAL) {
+  if (!prio_io) {
     LogZoneStats();
   }
 
