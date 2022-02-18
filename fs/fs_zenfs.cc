@@ -253,6 +253,9 @@ ZenFS::~ZenFS() {
   zbd_->LogZoneUsage();
   LogFiles();
 
+  if (background_meta_reset_task_ != nullptr)
+    background_meta_reset_task_->join();
+
   meta_log_.reset(nullptr);
   ClearFiles();
   delete zbd_;
@@ -327,11 +330,18 @@ IOStatus ZenFS::WriteEndRecord(ZenMetaLog* meta_log) {
   return meta_log->AddRecord(endRecord);
 }
 
+void background_zone_reset(Zone *zone) {
+  zone->Reset();
+}
+
 /* Assumes the files_mtx_ is held */
 IOStatus ZenFS::RollMetaZoneLocked() {
   std::unique_ptr<ZenMetaLog> new_meta_log, old_meta_log;
   Zone* new_meta_zone = nullptr;
   IOStatus s;
+
+  if (background_meta_reset_task_ != nullptr)
+    background_meta_reset_task_->join();
 
   ZenFSMetricsLatencyGuard guard(zbd_->GetMetrics(), ZENFS_ROLL_LATENCY,
                                  Env::Default());
@@ -371,7 +381,9 @@ IOStatus ZenFS::RollMetaZoneLocked() {
   s = WriteSnapshotLocked(meta_log_.get());
 
   /* We've rolled successfully, we can reset the old zone now */
-  if (s.ok()) old_meta_log->GetZone()->Reset();
+  if (s.ok()) {
+      background_meta_reset_task_ = new std::thread(background_zone_reset, old_meta_log->GetZone());
+  }
 
   return s;
 }

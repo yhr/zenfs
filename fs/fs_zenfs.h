@@ -7,6 +7,7 @@
 #pragma once
 
 #include <memory>
+#include <thread>
 
 #include "io_zenfs.h"
 #include "metrics.h"
@@ -132,6 +133,8 @@ class ZenFS : public FileSystemWrapper {
   std::unique_ptr<Superblock> superblock_;
 
   std::shared_ptr<Logger> GetLogger() { return logger_; }
+
+  std::thread *background_meta_reset_task_ = nullptr;
 
   struct ZenFSMetadataWriter : public MetadataWriter {
     ZenFS* zenFS;
