@@ -132,7 +132,8 @@ class ZoneFile {
   size_t GetUniqueId(char* id, size_t max_size);
 
   bool IsSparse() { return is_sparse_; };
-
+  bool IsPrioritized() { return (io_type_ == IOType::kWAL) ||
+                                (io_type_ == IOType::kManifest); };
   void SetSparse(bool is_sparse) { is_sparse_ = is_sparse; };
   uint64_t HasActiveExtent() { return extent_start_ != NO_EXTENT; };
   uint64_t GetExtentStart() { return extent_start_; };

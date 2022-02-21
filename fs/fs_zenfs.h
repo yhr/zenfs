@@ -124,6 +124,9 @@ class ZenFS : public FileSystemWrapper {
   ZonedBlockDevice* zbd_;
   std::map<std::string, std::shared_ptr<ZoneFile>> files_;
   std::mutex files_mtx_;
+  std::mutex high_prio_files_mtx_;
+  std::mutex low_prio_files_mtx_;
+
   std::shared_ptr<Logger> logger_;
   std::atomic<uint64_t> next_file_id_;
 
@@ -154,6 +157,9 @@ class ZenFS : public FileSystemWrapper {
     kEndRecord = 4,
     kFileReplace = 5,
   };
+
+  void lock_files_(bool priotized);
+  void unlock_files(bool priotized);
 
   void LogFiles();
   void ClearFiles();

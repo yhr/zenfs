@@ -705,8 +705,7 @@ IOStatus ZenFS::OpenWritableFile(const std::string& fname,
 
   /* Enable sparse writes for WAL and manifest files as this
      reduces metadata churn and reduces write tail latency */
-  if ((zoneFile->GetIOType() == IOType::kWAL) ||
-      (zoneFile->GetIOType() == IOType::kManifest)) {
+  if (zoneFile->IsPrioritized()) {
     zoneFile->SetSparse(!file_opts.use_direct_writes);
   }
 
