@@ -274,6 +274,28 @@ IOStatus ZenFS::Repair() {
   return IOStatus::OK();
 }
 
+void ZenFS::files_lock(bool prioritized) {
+  if (prioritized) {
+    high_prio_files_mtx_.lock();
+    files_mtx_.lock();
+    high_prio_files_mtx_.unlock();
+  } else {
+    low_prio_files_mtx_.lock();
+    high_prio_files_mtx_.lock();
+    files_mtx_.lock();
+    high_prio_files_mtx_.unlock();
+  }
+}
+
+void ZenFS::files_unlock(bool prioritized) {
+  if (prioritized) {
+    files_mtx_.unlock();
+  } else {
+    files_mtx_.unlock();
+    low_prio_files_mtx_.unlock();
+  }
+}
+
 void ZenFS::LogFiles() {
   std::map<std::string, std::shared_ptr<ZoneFile>>::iterator it;
   uint64_t total_size = 0;
@@ -302,9 +324,10 @@ void ZenFS::LogFiles() {
 
 void ZenFS::ClearFiles() {
   std::map<std::string, std::shared_ptr<ZoneFile>>::iterator it;
-  std::lock_guard<std::mutex> file_lock(files_mtx_);
+  files_lock(false);
   for (it = files_.begin(); it != files_.end(); it++) it->second.reset();
   files_.clear();
+  files_unlock(false);
 }
 
 /* Assumes that files_mutex_ is held */
@@ -391,7 +414,7 @@ IOStatus ZenFS::RollMetaZoneLocked() {
 IOStatus ZenFS::PersistSnapshot(ZenMetaLog* meta_writer) {
   IOStatus s;
 
-  std::lock_guard<std::mutex> file_lock(files_mtx_);
+  files_lock(false);
   std::lock_guard<std::mutex> metadata_lock(metadata_sync_mtx_);
 
   s = WriteSnapshotLocked(meta_writer);
@@ -400,6 +423,7 @@ IOStatus ZenFS::PersistSnapshot(ZenMetaLog* meta_writer) {
     s = RollMetaZoneLocked();
   }
 
+  files_unlock(false);
   if (!s.ok()) {
     Error(logger_,
           "Failed persisting a snapshot, we should go to read only now!");
@@ -454,11 +478,13 @@ IOStatus ZenFS::SyncFileMetadata(ZoneFile* zoneFile, bool replace) {
   IOStatus s;
   ZenFSMetricsLatencyGuard guard(zbd_->GetMetrics(), ZENFS_META_SYNC_LATENCY,
                                  Env::Default());
-  std::lock_guard<std::mutex> lock(files_mtx_);
+
+  files_lock(zoneFile->IsPrioritized());
 
   if (zoneFile->IsDeleted()) {
     Info(logger_, "File %s has been deleted, skip sync file metadata!",
          zoneFile->GetFilename().c_str());
+    files_unlock(zoneFile->IsPrioritized());
     return IOStatus::OK();
   }
 
@@ -474,6 +500,7 @@ IOStatus ZenFS::SyncFileMetadata(ZoneFile* zoneFile, bool replace) {
   s = PersistRecord(output);
   if (s.ok()) zoneFile->MetadataSynced();
 
+  files_unlock(zoneFile->IsPrioritized());
   return s;
 }
 
@@ -488,8 +515,9 @@ std::shared_ptr<ZoneFile> ZenFS::GetFileInternal(std::string fname) {
 
 std::shared_ptr<ZoneFile> ZenFS::GetFile(std::string fname) {
   std::shared_ptr<ZoneFile> zoneFile(nullptr);
-  std::lock_guard<std::mutex> lock(files_mtx_);
+  files_lock(true);
   zoneFile = GetFileInternal(fname);
+  files_unlock(true);
   return zoneFile;
 }
 
@@ -498,7 +526,7 @@ IOStatus ZenFS::DeleteFile(std::string fname) {
   IOStatus s;
 
   {
-    std::lock_guard<std::mutex> lock(files_mtx_);
+    files_lock(false);
     zoneFile = GetFileInternal(fname);
     if (zoneFile != nullptr) {
       std::string record;
@@ -519,6 +547,7 @@ IOStatus ZenFS::DeleteFile(std::string fname) {
     } else {
       s = IOStatus::NotFound("ZenFS::DeleteFile(): File not found");
     }
+    files_unlock(false);
   }
 
   if (s.ok()) s = zbd_->ResetUnusedIOZones();
@@ -649,7 +678,7 @@ IOStatus ZenFS::GetChildren(const std::string& dir, const IOOptions& options,
     if (f != "." && f != "..") result->push_back(f);
   }
 
-  std::lock_guard<std::mutex> lock(files_mtx_);
+  files_lock(false);
   for (it = files_.begin(); it != files_.end(); it++) {
     std::string fname = it->first;
     if (fname.rfind(dir, 0) == 0) {
@@ -664,6 +693,7 @@ IOStatus ZenFS::GetChildren(const std::string& dir, const IOOptions& options,
       }
     }
   }
+  files_unlock(false);
 
   return s;
 }
@@ -716,8 +746,9 @@ IOStatus ZenFS::OpenWritableFile(const std::string& fname,
     return s;
   }
 
-  std::lock_guard<std::mutex> file_lock(files_mtx_);
+  files_lock(zoneFile->IsPrioritized());
   files_.insert(std::make_pair(fname.c_str(), zoneFile));
+  files_unlock(zoneFile->IsPrioritized());
 
   result->reset(new ZonedWritableFile(zbd_, !file_opts.use_direct_writes,
                                       zoneFile, &metadata_writer_));
@@ -753,13 +784,14 @@ IOStatus ZenFS::GetFileModificationTime(const std::string& f,
   IOStatus s;
 
   Debug(logger_, "GetFileModificationTime: %s \n", f.c_str());
-  std::lock_guard<std::mutex> lock(files_mtx_);
+  files_lock(false);
   if (files_.find(f) != files_.end()) {
     zoneFile = files_[f];
     *mtime = (uint64_t)zoneFile->GetFileModificationTime();
   } else {
     s = target()->GetFileModificationTime(ToAuxPath(f), options, mtime, dbg);
   }
+  files_unlock(false);
   return s;
 }
 
@@ -769,14 +801,14 @@ IOStatus ZenFS::GetFileSize(const std::string& f, const IOOptions& options,
   IOStatus s;
 
   Debug(logger_, "GetFileSize: %s \n", f.c_str());
-
-  std::lock_guard<std::mutex> lock(files_mtx_);
+  files_lock(false);
   if (files_.find(f) != files_.end()) {
     zoneFile = files_[f];
     *size = zoneFile->GetFileSize();
   } else {
     s = target()->GetFileSize(ToAuxPath(f), options, size, dbg);
   }
+  files_unlock(false);
 
   return s;
 }
@@ -801,19 +833,20 @@ IOStatus ZenFS::RenameFile(const std::string& source_path,
       }
     }
 
-    files_mtx_.lock();
+    files_lock(false);
     files_.erase(source_path);
     source_file->Rename(dest_path);
     files_.insert(std::make_pair(dest_path, source_file));
-    files_mtx_.unlock();
+    files_unlock(false);
 
     s = SyncFileMetadata(source_file);
     if (!s.ok()) {
       /* Failed to persist the rename, roll back */
-      std::lock_guard<std::mutex> lock(files_mtx_);
+      files_lock(false);
       files_.erase(dest_path);
       source_file->Rename(source_path);
       files_.insert(std::make_pair(source_path, source_file));
+      files_unlock(false);
     }
   } else {
     s = target()->RenameFile(ToAuxPath(source_path), ToAuxPath(dest_path),
@@ -1141,8 +1174,9 @@ Status ZenFS::Mount(bool readonly) {
   if (readonly) {
     Info(logger_, "Mounting READ ONLY");
   } else {
-    std::lock_guard<std::mutex> lock(files_mtx_);
+    files_lock(false);
     s = RollMetaZoneLocked();
+    files_unlock(false);
     if (!s.ok()) {
       Error(logger_, "Failed to roll metadata zone.");
       return s;
@@ -1359,7 +1393,7 @@ void ZenFS::GetZenFSSnapshot(ZenFSSnapshot& snapshot,
     zbd_->GetZoneSnapshot(snapshot.zones_);
   }
   if (options.zone_file_) {
-    std::lock_guard<std::mutex> file_lock(files_mtx_);
+    files_lock(false);
     for (const auto& file_it : files_) {
       ZoneFile& file = *(file_it.second);
       // file -> extents mapping
@@ -1369,6 +1403,7 @@ void ZenFS::GetZenFSSnapshot(ZenFSSnapshot& snapshot,
         snapshot.extents_.emplace_back(*ext, file.GetFilename());
       }
     }
+    files_unlock(false);
   }
 
   if (options.trigger_report_) {

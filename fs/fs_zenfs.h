@@ -158,8 +158,8 @@ class ZenFS : public FileSystemWrapper {
     kFileReplace = 5,
   };
 
-  void lock_files_(bool priotized);
-  void unlock_files(bool priotized);
+  void files_lock(bool priotized);
+  void files_unlock(bool priotized);
 
   void LogFiles();
   void ClearFiles();
