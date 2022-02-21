@@ -454,7 +454,10 @@ IOStatus ZenFS::SyncFileExtents(ZoneFile* zoneFile,
   std::vector<ZoneExtent*> old_extents = zoneFile->GetExtents();
   zoneFile->ReplaceExtentList(new_extents);
   zoneFile->MetadataUnsynced();
+
+  files_lock(zoneFile->IsPrioritized());
   s = SyncFileMetadata(zoneFile, true);
+  files_unlock(zoneFile->IsPrioritized());
 
   if (!s.ok()) {
     return s;
@@ -472,14 +475,13 @@ IOStatus ZenFS::SyncFileExtents(ZoneFile* zoneFile,
   return IOStatus::OK();
 }
 
+/* Assumes that files_mutex_ is held */
 IOStatus ZenFS::SyncFileMetadata(ZoneFile* zoneFile, bool replace) {
   std::string fileRecord;
   std::string output;
   IOStatus s;
   ZenFSMetricsLatencyGuard guard(zbd_->GetMetrics(), ZENFS_META_SYNC_LATENCY,
                                  Env::Default());
-
-  files_lock(zoneFile->IsPrioritized());
 
   if (zoneFile->IsDeleted()) {
     Info(logger_, "File %s has been deleted, skip sync file metadata!",
@@ -500,7 +502,6 @@ IOStatus ZenFS::SyncFileMetadata(ZoneFile* zoneFile, bool replace) {
   s = PersistRecord(output);
   if (s.ok()) zoneFile->MetadataSynced();
 
-  files_unlock(zoneFile->IsPrioritized());
   return s;
 }
 
@@ -739,14 +740,14 @@ IOStatus ZenFS::OpenWritableFile(const std::string& fname,
     zoneFile->SetSparse(!file_opts.use_direct_writes);
   }
 
+  files_lock(zoneFile->IsPrioritized());
   /* Persist the creation of the file */
   s = SyncFileMetadata(zoneFile);
   if (!s.ok()) {
+    files_unlock(zoneFile->IsPrioritized());
     zoneFile.reset();
     return s;
   }
-
-  files_lock(zoneFile->IsPrioritized());
   files_.insert(std::make_pair(fname.c_str(), zoneFile));
   files_unlock(zoneFile->IsPrioritized());
 
@@ -839,15 +840,15 @@ IOStatus ZenFS::RenameFile(const std::string& source_path,
     files_.insert(std::make_pair(dest_path, source_file));
     files_unlock(false);
 
+    files_lock(false);
     s = SyncFileMetadata(source_file);
     if (!s.ok()) {
       /* Failed to persist the rename, roll back */
-      files_lock(false);
       files_.erase(dest_path);
       source_file->Rename(source_path);
       files_.insert(std::make_pair(source_path, source_file));
-      files_unlock(false);
     }
+    files_unlock(false);
   } else {
     s = target()->RenameFile(ToAuxPath(source_path), ToAuxPath(dest_path),
                              options, dbg);
