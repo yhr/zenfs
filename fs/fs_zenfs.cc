@@ -256,7 +256,7 @@ ZenFS::~ZenFS() {
   zbd_->LogZoneUsage();
   LogFiles();
 
-  if (gc_worker_ != nullptr) {
+  if (gc_worker_) {
     run_gc_worker_ = false;
     gc_worker_->join();
   }
@@ -1477,7 +1477,7 @@ Status ZenFS::Mount(bool readonly) {
     if (superblock_->IsGCEnabled()) {
       Info(logger_, "Starting garbage collection worker");
       run_gc_worker_ = true;
-      gc_worker_ = new std::thread(&ZenFS::GCWorker, this);
+      gc_worker_.reset(new std::thread(&ZenFS::GCWorker, this));
     }
   }
 
