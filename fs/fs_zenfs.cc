@@ -288,9 +288,9 @@ void ZenFS::GCWorker() {
     std::set<uint64_t> migrate_zones_start;
     for (const auto& zone : snapshot.zones_) {
       if (zone.capacity == 0) {
-        uint64_t garbage_percent =
+        uint64_t garbage_percent_approx =
             100 - 100 * zone.used_capacity / zone.max_capacity;
-        if (garbage_percent > threshold && garbage_percent < 100) {
+        if (garbage_percent_approx > threshold && garbage_percent_approx < 100) {
           migrate_zones_start.emplace(zone.start);
         }
       }
