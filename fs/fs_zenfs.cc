@@ -268,13 +268,13 @@ ZenFS::~ZenFS() {
 
 void ZenFS::GCWorker() {
   while (run_gc_worker_) {
+    usleep(1000 * 1000 * 10);
+
     uint64_t non_free = zbd_->GetUsedSpace() + zbd_->GetReclaimableSpace();
     uint64_t free = zbd_->GetFreeSpace();
     uint64_t free_percent = (100 * free) / (free + non_free);
     ZenFSSnapshot snapshot;
     ZenFSSnapshotOptions options;
-
-    usleep(1000 * 1000 * 10);
 
     if (free_percent > GC_START_LEVEL) continue;
 
@@ -285,20 +285,20 @@ void ZenFS::GCWorker() {
     GetZenFSSnapshot(snapshot, options);
 
     uint64_t threshold = (100 - GC_SLOPE * (GC_START_LEVEL - free_percent));
-    std::set<uint64_t> migrate_zone_ids;
+    std::set<uint64_t> migrate_zones_start;
     for (const auto& zone : snapshot.zones_) {
       if (zone.capacity == 0) {
         uint64_t garbage_percent =
             100 - 100 * zone.used_capacity / zone.max_capacity;
         if (garbage_percent > threshold && garbage_percent < 100) {
-          migrate_zone_ids.emplace(zone.start);
+          migrate_zones_start.emplace(zone.start);
         }
       }
     }
 
     std::vector<ZoneExtentSnapshot*> migrate_exts;
     for (auto& ext : snapshot.extents_) {
-      if (migrate_zone_ids.find(ext.zone_start) != migrate_zone_ids.end()) {
+      if (migrate_zones_start.find(ext.zone_start) != migrate_zones_start.end()) {
         migrate_exts.push_back(&ext);
       }
     }
