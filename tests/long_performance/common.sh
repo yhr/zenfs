@@ -2,7 +2,7 @@
 set -e
 
 # Common settings
-NUM=1000000000
+NUM=2000000000
 VALUE_SIZE=1000
 
 # Helper(s)
