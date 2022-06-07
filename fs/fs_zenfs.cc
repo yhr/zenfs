@@ -15,6 +15,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <iostream>
+#include <fstream>
+#include <ctime>
 
 #include <set>
 #include <sstream>
@@ -24,6 +27,7 @@
 #ifdef ZENFS_EXPORT_PROMETHEUS
 #include "metrics_prometheus.h"
 #endif
+
 #include "rocksdb/utilities/object_registry.h"
 #include "snapshot.h"
 #include "util/coding.h"
@@ -270,20 +274,37 @@ ZenFS::~ZenFS() {
 }
 
 void ZenFS::GCWorker() {
+  std::time_t t = std::time(0);
+  char buf[255] = {0};
+  std::ofstream logstream;
+
+  sprintf(buf, "/tmp/zenfs_wa_%d.log", (int)t);
+  logstream.open(buf);
+
   while (run_gc_worker_) {
 
     for (int i = 0; i < 10; i++) {
       usleep(1000 * 1000);
       if (!run_gc_worker_) {
+        logstream.close();
         return;
       }
     }
 
-    uint64_t non_free = zbd_->GetUsedSpace() + zbd_->GetReclaimableSpace();
+    uint64_t used = zbd_->GetUsedSpace();
+    uint64_t reclaimable = zbd_->GetReclaimableSpace();
+    uint64_t non_free = used + reclaimable;
     uint64_t free = zbd_->GetFreeSpace();
     uint64_t free_percent = (100 * free) / (free + non_free);
     ZenFSSnapshot snapshot;
     ZenFSSnapshotOptions options;
+
+    // Timestamp Userwrites Totalwrites used reclaimable free(%)
+    t = std::time(0);
+    sprintf(buf, "%d %lu %lu %lu %lu %lu\n", (int)t, zbd_->GetUserBytesWritten(), zbd_->GetTotalBytesWritten(),
+                  used, reclaimable, free_percent);
+
+    logstream << buf << std::flush;
 
     if (free_percent > GC_START_LEVEL) continue;
 
@@ -324,6 +345,7 @@ void ZenFS::GCWorker() {
       }
     }
   }
+  logstream.close();
 }
 
 IOStatus ZenFS::Repair() {
