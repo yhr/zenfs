@@ -460,7 +460,7 @@ class ZenFS : public FileSystemWrapper {
  private:
   const uint64_t GC_START_LEVEL =
       20;                      /* Enable GC when < 20% free space available */
-  const uint64_t GC_SLOPE = 2; /* GC agressiveness */
+  const uint64_t GC_SLOPE = 3; /* GC agressiveness */
   void GCWorker();
 };
 #endif  // !defined(ROCKSDB_LITE) && defined(OS_LINUX)
