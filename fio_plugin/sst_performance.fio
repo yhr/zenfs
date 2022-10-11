@@ -1,0 +1,11 @@
+[global]
+thread
+size=2G
+create_on_open=1
+bs=1M
+end_fsync=1
+numjobs=16
+
+[write_sst]
+readwrite=write
+

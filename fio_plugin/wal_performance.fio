@@ -1,0 +1,15 @@
+[global]
+thread
+size=512M
+create_on_open=1
+bs=4000
+fsync=1
+filename=test.log
+
+[write]
+stonewall
+readwrite=write
+
+[read]
+stonewall
+readwrite=read
