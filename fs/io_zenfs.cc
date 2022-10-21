@@ -1074,6 +1074,7 @@ IOStatus ZoneFile::MigrateData(uint64_t offset, uint32_t length,
   uint32_t step = 128 << 10;
   uint32_t read_sz = step;
   int block_sz = zbd_->GetBlockSize();
+  IOStatus s;
 
   assert(offset % block_sz == 0);
   if (offset % block_sz != 0) {
@@ -1093,17 +1094,21 @@ IOStatus ZoneFile::MigrateData(uint64_t offset, uint32_t length,
 
     int r = zbd_->Read(buf, offset, read_sz + pad_sz, true);
     if (r < 0) {
-      free(buf);
-      return IOStatus::IOError(strerror(errno));
+      s = IOStatus::IOError(strerror(errno));
+      break;
     }
-    target_zone->Append(buf, r);
+    s = target_zone->Append(buf, r);
+    if (!s.ok()) {
+      break;
+    }
+
     length -= read_sz;
     offset += r;
   }
 
   free(buf);
 
-  return IOStatus::OK();
+  return s;
 }
 
 }  // namespace ROCKSDB_NAMESPACE
