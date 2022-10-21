@@ -483,11 +483,25 @@ IOStatus ZenFS::SyncFileExtents(ZoneFile* zoneFile,
   IOStatus s;
 
   std::vector<ZoneExtent*> old_extents = zoneFile->GetExtents();
+
+  if (new_extents.size() != old_extents.size())
+    return IOStatus::IOError("Extent list size missmatch");
+
   zoneFile->ReplaceExtentList(new_extents);
   zoneFile->MetadataUnsynced();
   s = SyncFileMetadata(zoneFile, true);
 
   if (!s.ok()) {
+    // We did not manage to sync the new extents, roll back!
+    zoneFile->ReplaceExtentList(old_extents);
+    zoneFile->MetadataSynced();
+    for (size_t i = 0; i < new_extents.size(); ++i) {
+      ZoneExtent* new_ext = new_extents[i];
+      if (new_ext->start_ != old_extents[i]->start_) {
+        new_ext->zone_->used_capacity_ -= new_ext->length_;
+      }
+      delete new_ext;
+    }
     return s;
   }
 
@@ -1767,7 +1781,7 @@ IOStatus ZenFS::MigrateExtents(
 IOStatus ZenFS::MigrateFileExtents(
     const std::string& fname,
     const std::vector<ZoneExtentSnapshot*>& migrate_exts) {
-  IOStatus s = IOStatus::OK();
+  IOStatus s = IOStatus::IOError();
   Info(logger_, "MigrateFileExtents, fname: %s, extent count: %lu",
        fname.data(), migrate_exts.size());
 
@@ -1852,8 +1866,12 @@ IOStatus ZenFS::MigrateFileExtents(
     }
   }
 
+  // Status is ok if we have migrated at least one extent
   if (s.ok()) {
-    SyncFileExtents(zfile.get(), new_extent_list);
+    s = SyncFileExtents(zfile.get(), new_extent_list);
+    if (!s.ok()) {
+      Info(logger_, "Failed to sync the migrated extents");
+    }
   }
 
   zfile->ReleaseWRLock();
