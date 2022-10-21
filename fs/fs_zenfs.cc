@@ -1792,7 +1792,7 @@ IOStatus ZenFS::MigrateFileExtents(
 
   // Modify the new extent list
   for (ZoneExtent* ext : new_extent_list) {
-    // Check if current extent need to be migrated
+    // Check if current extent needs to be migrated
     auto it = std::find_if(migrate_exts.begin(), migrate_exts.end(),
                            [&](const ZoneExtentSnapshot* ext_snapshot) {
                              return ext_snapshot->start == ext->start_ &&
