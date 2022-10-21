@@ -531,6 +531,9 @@ IOStatus ZenFS::SyncFileMetadataNoLock(ZoneFile* zoneFile, bool replace) {
     return IOStatus::OK();
   }
 
+  /* Check if extents sizes and file size matches */
+  assert(zoneFile->IsFileSizeOK());
+
   if (replace) {
     PutFixed32(&output, kFileReplace);
   } else {

@@ -143,6 +143,14 @@ class ZoneFile {
 
   IOStatus Recover();
 
+  bool IsFileSizeOK() {
+    uint64_t sum = 0;
+    for (uint32_t i = 0; i < extents_.size(); i++) {
+      sum += extents_[i]->length_;
+    }
+    return (sum == file_size_);
+  }
+
   void ReplaceExtentList(std::vector<ZoneExtent*> new_list);
   void AddLinkName(const std::string& linkfile);
   IOStatus RemoveLinkName(const std::string& linkfile);
