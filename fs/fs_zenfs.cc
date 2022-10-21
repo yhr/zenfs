@@ -1820,34 +1820,42 @@ IOStatus ZenFS::MigrateFileExtents(
     }
 
     uint64_t target_start = target_zone->wp_;
+    uint64_t gc_bytes = 0;
     if (zfile->IsSparse()) {
       // For buffered write, ZenFS use inlined metadata for extents and each
       // extent has a SPARSE_HEADER_SIZE.
       target_start = target_zone->wp_ + ZoneFile::SPARSE_HEADER_SIZE;
-      zfile->MigrateData(ext->start_ - ZoneFile::SPARSE_HEADER_SIZE,
+      s = zfile->MigrateData(ext->start_ - ZoneFile::SPARSE_HEADER_SIZE,
                          ext->length_ + ZoneFile::SPARSE_HEADER_SIZE,
                          target_zone);
-      zbd_->AddGCBytesWritten(ext->length_ + ZoneFile::SPARSE_HEADER_SIZE);
+      gc_bytes = ext->length_ + ZoneFile::SPARSE_HEADER_SIZE;
     } else {
-      zfile->MigrateData(ext->start_, ext->length_, target_zone);
-      zbd_->AddGCBytesWritten(ext->length_);
+      s = zfile->MigrateData(ext->start_, ext->length_, target_zone);
+      gc_bytes = ext->length_;
     }
 
-    // If the file doesn't exist, skip
-    if (GetFileNoLock(fname) == nullptr) {
-      Info(logger_, "Migrate file not exist anymore.");
-      zbd_->ReleaseMigrateZone(target_zone);
-      break;
+    if (!s.ok()) {
+      Info(logger_, "Migration of extent data failed: %s", s.ToString().c_str());
+    } else {
+      zbd_->AddGCBytesWritten(gc_bytes);
+      ext->start_ = target_start;
+      ext->zone_ = target_zone;
+      ext->zone_->used_capacity_ += ext->length_;
     }
-
-    ext->start_ = target_start;
-    ext->zone_ = target_zone;
-    ext->zone_->used_capacity_ += ext->length_;
 
     zbd_->ReleaseMigrateZone(target_zone);
+
+    // If the file has been deleted, stop
+    if (GetFileNoLock(fname) == nullptr) {
+      Info(logger_, "Migrate file does not exist anymore, stopping migration");
+      break;
+    }
   }
 
-  SyncFileExtents(zfile.get(), new_extent_list);
+  if (s.ok()) {
+    SyncFileExtents(zfile.get(), new_extent_list);
+  }
+
   zfile->ReleaseWRLock();
 
   Info(logger_, "MigrateFileExtents Finished, fname: %s, extent count: %lu",
