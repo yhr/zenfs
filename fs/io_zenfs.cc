@@ -126,6 +126,11 @@ void ZoneFile::EncodeJson(std::ostream& json_stream) {
   json_stream << "]}";
 }
 
+void ZoneFile::AddExtent(ZoneExtent *extent) {
+  extents_.push_back(extent);
+}
+
+
 Status ZoneFile::DecodeFrom(Slice* input) {
   uint32_t tag = 0;
 
@@ -163,7 +168,7 @@ Status ZoneFile::DecodeFrom(Slice* input) {
         if (!extent->zone_)
           return Status::Corruption("ZoneFile", "Invalid zone extent");
         extent->zone_->used_capacity_ += extent->length_;
-        extents_.push_back(extent);
+        AddExtent(extent);
         break;
       case kModificationTime:
         uint64_t ct;
@@ -215,7 +220,7 @@ Status ZoneFile::MergeUpdate(std::shared_ptr<ZoneFile> update, bool replace) {
     ZoneExtent* extent = update_extents[i];
     Zone* zone = extent->zone_;
     zone->used_capacity_ += extent->length_;
-    extents_.push_back(new ZoneExtent(extent->start_, extent->length_, zone));
+    AddExtent(new ZoneExtent(extent->start_, extent->length_, zone));
   }
   extent_start_ = update->GetExtentStart();
   is_sparse_ = update->IsSparse();
@@ -459,7 +464,7 @@ void ZoneFile::PushExtent() {
   if (length == 0) return;
 
   assert(length <= (active_zone_->wp_ - extent_start_));
-  extents_.push_back(new ZoneExtent(extent_start_, length, active_zone_));
+  AddExtent(new ZoneExtent(extent_start_, length, active_zone_));
 
   active_zone_->used_capacity_ += length;
   extent_start_ = active_zone_->wp_;
@@ -513,8 +518,7 @@ IOStatus ZoneFile::BufferedAppend(char* buffer, uint32_t data_size) {
     s = active_zone_->Append(buffer, wr_size + pad_sz);
     if (!s.ok()) return s;
 
-    extents_.push_back(
-        new ZoneExtent(extent_start_, extent_length, active_zone_));
+    AddExtent(new ZoneExtent(extent_start_, extent_length, active_zone_));
 
     extent_start_ = active_zone_->wp_;
     active_zone_->used_capacity_ += extent_length;
@@ -570,8 +574,7 @@ IOStatus ZoneFile::SparseAppend(char* sparse_buffer, uint32_t data_size) {
     s = active_zone_->Append(sparse_buffer, wr_size + pad_sz);
     if (!s.ok()) return s;
 
-    extents_.push_back(
-        new ZoneExtent(extent_start_ + ZoneFile::SPARSE_HEADER_SIZE,
+    AddExtent(new ZoneExtent(extent_start_ + ZoneFile::SPARSE_HEADER_SIZE,
                        extent_length, active_zone_));
 
     extent_start_ = active_zone_->wp_;
@@ -666,7 +669,7 @@ IOStatus ZoneFile::RecoverSparseExtents(uint64_t start, uint64_t end,
     recovered_segments++;
 
     zone->used_capacity_ += extent_length;
-    extents_.push_back(new ZoneExtent(next_extent_start + SPARSE_HEADER_SIZE,
+    AddExtent(new ZoneExtent(next_extent_start + SPARSE_HEADER_SIZE,
                                       extent_length, zone));
 
     uint64_t extent_blocks = (extent_length + SPARSE_HEADER_SIZE) / block_sz;
@@ -715,7 +718,7 @@ IOStatus ZoneFile::Recover() {
     /* For non-sparse files, the data is contigous and we can recover directly
        any missing data using the WP */
     zone->used_capacity_ += to_recover;
-    extents_.push_back(new ZoneExtent(extent_start_, to_recover, zone));
+    AddExtent(new ZoneExtent(extent_start_, to_recover, zone));
   }
 
   /* Mark up the file as having no missing extents */
