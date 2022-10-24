@@ -127,6 +127,16 @@ void ZoneFile::EncodeJson(std::ostream& json_stream) {
 }
 
 void ZoneFile::AddExtent(ZoneExtent *extent) {
+  uint64_t extents = extents_.size();
+
+  /* Calculate file offset for faster lookups */
+  if (extents == 0) {
+    extent->file_offset_ = 0;
+  } else {
+    ZoneExtent *prev = extents_.back();
+    extent->file_offset_ = prev->start_ + prev->length_;
+  }
+
   extents_.push_back(extent);
 }
 

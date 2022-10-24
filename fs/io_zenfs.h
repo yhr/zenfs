@@ -29,8 +29,9 @@ namespace ROCKSDB_NAMESPACE {
 
 class ZoneExtent {
  public:
-  uint64_t start_;
-  uint64_t length_;
+  uint64_t start_;       /* Flash start address, in bytes */
+  uint64_t length_;      /* Length, in bytes */
+  uint64_t file_offset_; /* File offset at the start of the extent - not persisted */
   Zone* zone_;
 
   explicit ZoneExtent(uint64_t start, uint64_t length, Zone* zone);
