@@ -1,15 +1,19 @@
 [global]
 thread
-size=512M
+size=1G
 create_on_open=1
 bs=4000
-fsync=1
+fdatasync=1
 filename=test.log
+verify=crc32c
 
 [write]
 stonewall
 readwrite=write
+do_verify=0
 
 [read]
 stonewall
 readwrite=read
+do_verify=1
+
