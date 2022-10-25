@@ -1802,9 +1802,12 @@ IOStatus ZenFS::MigrateFileExtents(
 
   std::vector<ZoneExtent*> new_extent_list;
   std::vector<ZoneExtent*> extents = zfile->GetExtents();
+  uint64_t file_offset = 0;
   for (const auto* ext : extents) {
-    new_extent_list.push_back(
-        new ZoneExtent(ext->start_, ext->length_, ext->zone_));
+    ZoneExtent *ext_copy = new ZoneExtent(ext->start_, ext->length_, ext->zone_);
+    ext_copy->file_offset_ = file_offset;
+    file_offset += ext_copy->length_;
+    new_extent_list.push_back(ext_copy);
   }
 
   // Modify the new extent list

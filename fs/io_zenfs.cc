@@ -134,7 +134,7 @@ void ZoneFile::AddExtent(ZoneExtent *extent) {
     extent->file_offset_ = 0;
   } else {
     ZoneExtent *prev = extents_.back();
-    extent->file_offset_ = prev->start_ + prev->length_;
+    extent->file_offset_ = prev->file_offset_ + prev->length_;
   }
 
   extents_.push_back(extent);
@@ -329,14 +329,36 @@ IOStatus ZoneFile::PersistMetadata() {
 }
 
 ZoneExtent* ZoneFile::GetExtent(uint64_t file_offset, uint64_t* dev_offset) {
-  for (unsigned int i = 0; i < extents_.size(); i++) {
-    if (file_offset < extents_[i]->length_) {
-      *dev_offset = extents_[i]->start_ + file_offset;
-      return extents_[i];
+  uint64_t extent_index;
+
+  if (extents_.size() == 0)
+    return NULL;
+
+  /* Guess extent start, then do a linear search */
+  extent_index = file_offset / (file_size_ / extents_.size());
+  if (extent_index >= extents_.size())
+    extent_index = extents_.size() - 1;
+
+  while (true) {
+    ZoneExtent *extent = extents_[extent_index];
+
+    if (file_offset >= (extent->file_offset_ + extent->length_)) {
+      extent_index++;
+      if (extent_index == extents_.size()) {
+        return NULL;
+      }
+    } else if (file_offset < extent->file_offset_) {
+      if (extent_index == 0) {
+        return NULL;
+      }
+      extent_index--;
     } else {
-      file_offset -= extents_[i]->length_;
+      *dev_offset = extent->start_ + (file_offset - extent->file_offset_);
+      return extent;
     }
   }
+
+  /* Should never reach here */
   return NULL;
 }
 
