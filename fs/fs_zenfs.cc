@@ -1874,9 +1874,13 @@ IOStatus ZenFS::MigrateFileExtents(
 
   // Status is ok if we have migrated at least one extent
   if (s.ok()) {
-    s = SyncFileExtents(zfile.get(), new_extent_list);
-    if (!s.ok()) {
-      Info(logger_, "Failed to sync the migrated extents");
+    if (!zfile->IsFileSizeOK()) {
+      s = IOStatus::Corruption("File size does not match sum of extents after migration");
+    } else {
+      s = SyncFileExtents(zfile.get(), new_extent_list);
+      if (!s.ok()) {
+        Info(logger_, "Failed to sync the migrated extents");
+      }
     }
   }
 
