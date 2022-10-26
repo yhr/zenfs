@@ -153,6 +153,7 @@ class ZoneFile {
   }
 
   void ReplaceExtentList(std::vector<ZoneExtent*> new_list);
+  bool TryConcatenateExtent(ZoneExtent *extent);
   void AddExtent(ZoneExtent *extent);
   void AddLinkName(const std::string& linkfile);
   IOStatus RemoveLinkName(const std::string& linkfile);

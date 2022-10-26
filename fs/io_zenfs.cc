@@ -126,6 +126,34 @@ void ZoneFile::EncodeJson(std::ostream& json_stream) {
   json_stream << "]}";
 }
 
+bool ZoneFile::TryConcatenateExtent(ZoneExtent *extent) {
+  uint64_t extents = extents_.size();
+
+  if (extents == 0) return false;
+
+  ZoneExtent *prev = extents_.back();
+
+  /* We can't merge if we already synced the previous extent*/
+  if (nr_synced_extents_ == extents) return false;
+
+  /* Make sure the extents are in the same zone */
+  if ( (extent->start_ / zbd_->GetZoneSize()) !=
+         (prev->start_ / zbd_->GetZoneSize()) ) {
+    return false;
+  }
+
+  /* Check that the extents are contigous */
+  if (extent->start_ != (prev->start_ + prev->length_)) {
+    return false;
+  }
+
+  /* All good */
+  prev->length_ += extent->length_;
+  delete extent;
+
+  return true;
+}
+
 void ZoneFile::AddExtent(ZoneExtent *extent) {
   uint64_t extents = extents_.size();
 
@@ -496,7 +524,10 @@ void ZoneFile::PushExtent() {
   if (length == 0) return;
 
   assert(length <= (active_zone_->wp_ - extent_start_));
-  AddExtent(new ZoneExtent(extent_start_, length, active_zone_));
+  ZoneExtent *new_extent = new ZoneExtent(extent_start_, length, active_zone_);
+  if (!TryConcatenateExtent(new_extent)) {
+    AddExtent(new_extent);
+  };
 
   active_zone_->used_capacity_ += length;
   extent_start_ = active_zone_->wp_;
@@ -550,7 +581,10 @@ IOStatus ZoneFile::BufferedAppend(char* buffer, uint32_t data_size) {
     s = active_zone_->Append(buffer, wr_size + pad_sz);
     if (!s.ok()) return s;
 
-    AddExtent(new ZoneExtent(extent_start_, extent_length, active_zone_));
+    ZoneExtent *new_extent = new ZoneExtent(extent_start_, extent_length, active_zone_);
+    if (!TryConcatenateExtent(new_extent)) {
+      AddExtent(new_extent);
+    };
 
     extent_start_ = active_zone_->wp_;
     active_zone_->used_capacity_ += extent_length;
