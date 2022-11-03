@@ -146,7 +146,7 @@ static int fio_rocksdbfs_setup(struct thread_data *td)
     return 1;
   }
 
-  dprintf(FD_FILE, "Filesystem setup from URI: %s \n", fs_opts->fs_uri);
+//  dprintf(FD_FILE, "Filesystem setup from URI: %s \n", fs_opts->fs_uri);
   td->io_ops_data = fs_cookie;
 
 	return 0;
