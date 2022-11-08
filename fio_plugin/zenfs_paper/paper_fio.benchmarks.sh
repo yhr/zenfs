@@ -16,8 +16,10 @@ EXT4_MOUNT_DIR=/mnt/ext4_$CDEV
 ZBTRFS_MOUNT_DIR=/mnt/zbtrfs_$ZDEV
 BTRFS_MOUNT_DIR=/mnt/btrfs_$CDEV
 
-BTRFS_PROGS_PATH=/home/hans/repos/btrfs-progs
-ZENFS_UTIL_PATH=/home/hans/repos/rocksdb/plugin/zenfs/util
+BTRFS_PROGS_PATH="/home/hans/repos/btrfs-progs"
+ZENFS_UTIL_PATH="/home/hans/repos/rocksdb/plugin/zenfs/util"
+ROCKSDB_SO_PATH="../../../../librocksdb.so"
+ZENFS_IOENGINE_SO_PATH="../rocksdbfs_fio_engine.so"
 
 prepare_cdev () {
   echo Setting io scheduler to $CDEV_IO_SCHEDULER for $CDEVPATH
@@ -123,9 +125,9 @@ BTRFS_JOBNAME="btrfs-$CDEV_IO_SCHEDULER"
 umount "$BTRFS_MOUNT_DIR"
 
 prepare_zenfs
-ZENFS_FS_PARAMETERS="--ioengine=./rocksdbfs_fio_engine.so --fs_uri=zenfs://dev:$ZDEV --create_on_open=1"
+ZENFS_FS_PARAMETERS="--ioengine=$ZENFS_IOENGINE_SO_PATH --fs_uri=zenfs://dev:$ZDEV --create_on_open=1"
 ZENFS_JOBNAME="zenfs-$ZDEV_IO_SCHEDULER"
-LD_PRELOAD=../../../librocksdb.so ./run_lsm_filesystem_tests.sh "$ZENFS_JOBNAME" "$ZENFS_FS_PARAMETERS"
+LD_PRELOAD="$ROCKSDB_SO_PATH" ./run_lsm_filesystem_tests.sh "$ZENFS_JOBNAME" "$ZENFS_FS_PARAMETERS"
 
 prepare_xfs
 XFS_FS_PARAMETERS="--directory=$XFS_MOUNT_DIR --create_on_open=1"
@@ -134,6 +136,12 @@ XFS_JOBNAME="xfs-$CDEV_IO_SCHEDULER"
 umount "$XFS_MOUNT_DIR"
 
 }
+
+prepare_zenfs
+ZENFS_FS_PARAMETERS="--ioengine=$ZENFS_IOENGINE_SO_PATH --fs_uri=zenfs://dev:$ZDEV --create_on_open=1"
+ZENFS_JOBNAME="zenfs-$ZDEV_IO_SCHEDULER"
+LD_PRELOAD="$ROCKSDB_SO_PATH" ./run_generic_filesystem_tests.sh "$ZENFS_JOBNAME" "test.dat" "$ZENFS_FS_PARAMETERS"
+quit_ok
 
 run_lsm_tests
 quit_ok
@@ -147,9 +155,9 @@ RAW_ZDEV_JOBNAME="raw-zdev-$ZDEV_IO_SCHEDULER"
 ./run_generic_filesystem_tests.sh "$RAW_ZDEV_JOBNAME" "$ZDEVPATH" "--zonemode=zbd"
 
 prepare_zenfs
-ZENFS_FS_PARAMETERS="--ioengine=./rocksdbfs_fio_engine.so --fs_uri=zenfs://dev:$ZDEV --create_on_open=1"
+ZENFS_FS_PARAMETERS="--ioengine=$ZENFS_IOENGINE_SO_PATH --fs_uri=zenfs://dev:$ZDEV --create_on_open=1"
 ZENFS_JOBNAME="zenfs-$ZDEV_IO_SCHEDULER"
-LD_PRELOAD=../../../librocksdb.so ./run_generic_filesystem_tests.sh "$ZENFS_JOBNAME" "test.dat" "$ZENFS_FS_PARAMETERS"
+LD_PRELOAD="$ROCKSDB_SO_PATH" ./run_generic_filesystem_tests.sh "$ZENFS_JOBNAME" "test.dat" "$ZENFS_FS_PARAMETERS"
 
 prepare_zbtrfs
 ZBTRFS_FS_PARAMETERS="--directory=$ZBTRFS_MOUNT_DIR --create_on_open=1"
