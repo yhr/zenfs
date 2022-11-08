@@ -129,11 +129,6 @@ class RocksDBFile {
       return GetErrno(s);
     }
 
-    /* Short read is not expected */
-    if (result.size() != (size_t)len) {
-      return -EIO;
-    }
-
     /* We don't expect that the data will be at an offset in the buffer (should not be possible)*/
     if (result.data() != (char*)buf) {
       return -EIO;
