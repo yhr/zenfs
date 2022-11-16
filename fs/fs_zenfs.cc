@@ -273,13 +273,15 @@ ZenFS::~ZenFS() {
   delete zbd_;
 }
 
-void ZenFS::GCWorker() {
+void ZenFS::GCWorker(bool gc_enabled) {
   std::time_t t = std::time(0);
   char buf[255] = {0};
   std::ofstream logstream;
 
   sprintf(buf, "/tmp/zenfs_wa_%d.log", (int)t);
   logstream.open(buf);
+  sprintf(buf, "user_bytes_written\ttotal_bytes_written\tused_bytes\treclaimable_bytes\tused_percent\n");
+  logstream << buf << std::flush; 
 
   while (run_gc_worker_) {
 
@@ -299,12 +301,15 @@ void ZenFS::GCWorker() {
     ZenFSSnapshot snapshot;
     ZenFSSnapshotOptions options;
 
-    // Timestamp Userwrites Totalwrites used reclaimable free(%)
     t = std::time(0);
-    sprintf(buf, "%d %lu %lu %lu %lu %lu\n", (int)t, zbd_->GetUserBytesWritten(), zbd_->GetTotalBytesWritten(),
-                  used, reclaimable, free_percent);
+    sprintf(buf, "%d\t%lu\t%lu\t%lu\t%lu\t%lu\n", (int)t, zbd_->GetUserBytesWritten(), zbd_->GetTotalBytesWritten(),
+                  used, reclaimable, 100 - free_percent);
 
     logstream << buf << std::flush;
+
+    if (!gc_enabled) {
+      continue;
+    }
 
     if (free_percent > GC_START_LEVEL) continue;
 
@@ -1524,11 +1529,9 @@ Status ZenFS::Mount(bool readonly) {
     if (!status.ok()) return status;
     Info(logger_, "  Done");
 
-    if (superblock_->IsGCEnabled()) {
-      Info(logger_, "Starting garbage collection worker");
-      run_gc_worker_ = true;
-      gc_worker_.reset(new std::thread(&ZenFS::GCWorker, this));
-    }
+    Info(logger_, "Starting garbage collection worker");
+    run_gc_worker_ = true;
+    gc_worker_.reset(new std::thread(&ZenFS::GCWorker, this, superblock_->IsGCEnabled()));  
   }
 
   LogFiles();
