@@ -1,22 +1,28 @@
 [global]
 thread
 size=4G
-
 create_on_open=1
 direct=1
+norandommap
 
 [4G_write_seq]
 stonewall
 end_fsync=1
 readwrite=write
 
-[4G_read_random]
+[4G_read_random_steady]
 stonewall
 readwrite=randread
 invalidate=1
+time_based
+runtime=30
+ramp_time=30
 
-[4G_read_seq]
+[4G_read_seq_steady]
 stonewall
 readwrite=read
 invalidate=1
+time_based
+runtime=30
+ramp_time=30
 
