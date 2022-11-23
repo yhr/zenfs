@@ -274,14 +274,15 @@ ZenFS::~ZenFS() {
 }
 
 void ZenFS::GCWorker(bool gc_enabled) {
-  std::time_t t = std::time(0);
+  std::time_t start_time = std::time(0);
+  std::time_t t;
   char buf[255] = {0};
   std::ofstream logstream;
 
-  sprintf(buf, "/tmp/zenfs_wa_%d.log", (int)t);
+  sprintf(buf, "/tmp/zenfs_wa_%d.log", (int)start_time);
   logstream.open(buf);
-  sprintf(buf, "user_bytes_written\ttotal_bytes_written\tused_bytes\treclaimable_bytes\tused_percent\n");
-  logstream << buf << std::flush; 
+  sprintf(buf, "time_stamp\tuser_bytes_written\ttotal_bytes_written\tused_bytes\treclaimable_bytes\tused_percent\n");
+  logstream << buf << std::flush;
 
   while (run_gc_worker_) {
 
@@ -302,7 +303,7 @@ void ZenFS::GCWorker(bool gc_enabled) {
     ZenFSSnapshotOptions options;
 
     t = std::time(0);
-    sprintf(buf, "%d\t%lu\t%lu\t%lu\t%lu\t%lu\n", (int)t, zbd_->GetUserBytesWritten(), zbd_->GetTotalBytesWritten(),
+    sprintf(buf, "%d\t%lu\t%lu\t%lu\t%lu\t%lu\n", (int)(t - start_time), zbd_->GetUserBytesWritten(), zbd_->GetTotalBytesWritten(),
                   used, reclaimable, 100 - free_percent);
 
     logstream << buf << std::flush;
