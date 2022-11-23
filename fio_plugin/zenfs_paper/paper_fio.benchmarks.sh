@@ -15,11 +15,16 @@ XFS_MOUNT_DIR=/mnt/xfs_$CDEV
 EXT4_MOUNT_DIR=/mnt/ext4_$CDEV
 ZBTRFS_MOUNT_DIR=/mnt/zbtrfs_$ZDEV
 BTRFS_MOUNT_DIR=/mnt/btrfs_$CDEV
+F2FS_MOUNT_DIR=/mnt/f2fs_$CDEV
 
 BTRFS_PROGS_PATH="/home/hans/repos/btrfs-progs"
 ZENFS_UTIL_PATH="/home/hans/repos/rocksdb/plugin/zenfs/util"
 ROCKSDB_SO_PATH="../../../../librocksdb.so"
 ZENFS_IOENGINE_SO_PATH="../rocksdbfs_fio_engine.so"
+
+
+echo Setting scaling governor to performance for all cpus
+echo "performance" | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
 
 prepare_cdev () {
   echo Setting io scheduler to $CDEV_IO_SCHEDULER for $CDEVPATH
@@ -86,6 +91,18 @@ prepare_btrfs () {
   mount -t btrfs $CDEVPATH $BTRFS_MOUNT_DIR
 }
 
+prepare_f2fs () {
+  prepare_cdev
+  
+  echo Creating conventional f2fs file system on top of $CDEVPATH
+  mkfs.f2fs -f $CDEVPATH 
+
+  rm -rf $F2FS_MOUNT_DIR
+  mkdir $F2FS_MOUNT_DIR
+  echo Mounting f2fs file system at $F2FS_MOUNT_DIR
+  mount  $CDEVPATH $F2FS_MOUNT_DIR
+}
+
 prepare_zenfs () {
   prepare_zdev
 
@@ -103,6 +120,12 @@ quit_ok () {
 # --create_on_open is used to read the file that has been previously written in stead of fio laying out a new one
 
 run_lsm_tests () {
+
+prepare_f2fs
+F2FS_FS_PARAMETERS="--directory=$F2FS_MOUNT_DIR --create_on_open=1"
+F2FS_JOBNAME="f2fs-$CDEV_IO_SCHEDULER"
+./run_lsm_filesystem_tests.sh "$F2FS_JOBNAME" "$F2FS_FS_PARAMETERS"
+umount "$F2FS_MOUNT_DIR"
 
 prepare_ext4
 EXT4_FS_PARAMETERS="--directory=$EXT4_MOUNT_DIR --create_on_open=1"
@@ -137,22 +160,11 @@ umount "$XFS_MOUNT_DIR"
 
 }
 
-prepare_zenfs
-ZENFS_FS_PARAMETERS="--ioengine=$ZENFS_IOENGINE_SO_PATH --fs_uri=zenfs://dev:$ZDEV --create_on_open=1"
-ZENFS_JOBNAME="zenfs-$ZDEV_IO_SCHEDULER"
-LD_PRELOAD="$ROCKSDB_SO_PATH" ./run_generic_filesystem_tests.sh "$ZENFS_JOBNAME" "test.dat" "$ZENFS_FS_PARAMETERS"
-quit_ok
-
-run_lsm_tests
-quit_ok
-
-prepare_cdev
-RAW_CDEV_JOBNAME="raw-cdev-$CDEV_IO_SCHEDULER"
-./run_generic_filesystem_tests.sh "$RAW_CDEV_JOBNAME" "$CDEVPATH" ""
-
-prepare_zdev
-RAW_ZDEV_JOBNAME="raw-zdev-$ZDEV_IO_SCHEDULER"
-./run_generic_filesystem_tests.sh "$RAW_ZDEV_JOBNAME" "$ZDEVPATH" "--zonemode=zbd"
+prepare_f2fs
+F2FS_FS_PARAMETERS="--directory=$F2FS_MOUNT_DIR --create_on_open=1"
+F2FS_JOBNAME="f2fs-$CDEV_IO_SCHEDULER"
+./run_generic_filesystem_tests.sh "$F2FS_JOBNAME" "test.dat" "$F2FS_FS_PARAMETERS"
+umount "$F2FS_MOUNT_DIR"
 
 prepare_zenfs
 ZENFS_FS_PARAMETERS="--ioengine=$ZENFS_IOENGINE_SO_PATH --fs_uri=zenfs://dev:$ZDEV --create_on_open=1"
@@ -182,6 +194,18 @@ EXT4_FS_PARAMETERS="--directory=$EXT4_MOUNT_DIR --create_on_open=1"
 EXT4_JOBNAME="ext4-$CDEV_IO_SCHEDULER"
 ./run_generic_filesystem_tests.sh "$EXT4_JOBNAME" "test.dat" "$EXT4_FS_PARAMETERS"
 umount "$EXT4_MOUNT_DIR"
+
+
+prepare_cdev
+RAW_CDEV_JOBNAME="raw-cdev-$CDEV_IO_SCHEDULER"
+./run_generic_filesystem_tests.sh "$RAW_CDEV_JOBNAME" "$CDEVPATH" ""
+
+prepare_zdev
+RAW_ZDEV_JOBNAME="raw-zdev-$ZDEV_IO_SCHEDULER"
+./run_generic_filesystem_tests.sh "$RAW_ZDEV_JOBNAME" "$ZDEVPATH" "--zonemode=zbd"
+
+
+run_lsm_tests
 
 quit_ok
 
